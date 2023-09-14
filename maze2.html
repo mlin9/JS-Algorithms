@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset='UTF-8'>
+        <title>Canvas</title>
+    </head>
+    <body>
+        <div style="text-align:center">
+        <canvas id="canvas" width="4000" height="4000">
+            <script>
+            function Vector(x, y){
+                this.x = x || 0;
+                this.y = y || 0;
+            }
+            Vector.prototype ={
+              negative: function(){
+                return new Vector(-this.x, -this.y);
+              },
+              add: function(v){
+                if (v instanceof Vector) return new Vector(this.x + v.x, this.y + v.y);
+                else return new Vector(this.x + v, this.y + v);
+              },
+              subtract: function(v){
+                if (v instanceof Vector) return new Vector(this.x - v.x, this.y - v.y);
+                else return new Vector(this.x - v, this.y - v);
+              },
+              multiply: function(v){
+                if (v instanceof Vector) return new Vector(this.x * v.x, this.y * v.y);
+                else return new Vector(this.x * v, this.y * v);
+              },
+              divide: function(v){
+                if (v instanceof Vector) return new Vector(this.x / v.x, this.y / v.y);
+                else return new Vector(this.x / v, this.y / v);
+              },
+              equals: function(v){
+                return this.x == v.x && this.y == v.y;
+              },
+              dot: function(v){
+                return this.x * v.x + this.y * v.y;
+              },
+              cross: function(v){
+                return this.x * v.y - this.y * v.x;
+              },
+              length: function(){
+                return Math.sqrt(this.dot(this));
+              },
+              unit: function(){
+                return this.divide(this.length());
+              },
+              min: function(){
+                return Math.min(this.x, this.y);
+              },
+              max: function(){
+                return Math.max(this.x, this.y);
+              },
+              to_angle: function(){
+                return Math.atan(this.y / this.x);
+              },
+              angle_to: function(a){
+                return Math.acos(this.dot(a) / (this.length() * a.length()));
+              },
+              to_array: function(n){
+                return [this.x, this.y].slice(0, n || 2);
+              },
+              clone: function(){
+                return new Vector(this.x, this.y);
+              },
+              init: function(x, y){
+                this.x = x; this.y = y;
+                return this;
+              },
+              dist: function(v){
+                return(Math.sqrt(Math.pow(v.x - this.x, 2) + Math.pow(v.y - this.y, 2)));
+              },
+              norm: function(left_hand){
+                if(left_hand)
+                    return (new Vector(-this.y, this.x)).unit();
+                return (new Vector(this.y, -this.x)).unit();
+              }
+            };
+            function matrix_gen(i_x, i_y){
+                var matrix = [];
+                for(var x = 0; x < i_x; x++){
+                    matrix[x] = [];
+                    for(var y = 0; y < i_y; y++)
+                        matrix[x][y] = undefined;
+                }
+                return matrix;
+            }
+            function matrix_init(m, value){
+                for(var y = 0; y < m[0].length; y++)
+                    for(var x = 0; x < m.length; x++)
+                        m[x][y] = value;
+            }
+            function matrix_to_string(m){
+                var output_buf = '';
+                for(var y = 0; y < m[0].length; y++){
+                    for(var x = 0; x < m.length; x++)
+                        if(m[x][y] != undefined)
+                            output_buf += m[x][y] + "\t";
+                        else
+                            output_buf += "NULL" + "\t";
+                    output_buf += '\n';
+                }
+                return output_buf;
+            }
+            function matrix_print(m){
+                console.log(matrix_to_string(m));
+            }
+            const DIM_X = 4000, DIM_Y = 4000;
+            const NORTH = 0, SOUTH = 1, EAST = 2, WEST = 3;
+            const UNCARVED = 0, CARVED = 1;
+            var canvas;
+            var cell_radius, cell_border, maze_dim_x, maze_dim_y;
+            var pos_x, pos_y, sol_x, sol_y;
+            var vector_nw, vector_ne, vector_se, vector_sw;
+            var intmap, solution, dir_found, mutex_dir, vector_buf, visited, halt, unsolved;
+            function init(i_x, i_y, i_r){
+                canvas = document.getElementById("canvas").getContext("2d");
+                cell_radius = i_r;
+                cell_border = cell_radius/10;
+                maze_dim_x = i_x;
+                maze_dim_y = i_y;
+                pos_x = 0;
+                pos_y = 0;
+                sol_x = maze_dim_x - 1;
+                sol_y = maze_dim_y - 1;
+                vector_nw = new Vector(-cell_radius, -cell_radius);
+                vector_ne = new Vector(cell_radius, -cell_radius);
+                vector_se = new Vector(cell_radius, cell_radius);
+                vector_sw = new Vector(-cell_radius, cell_radius);
+                intmap = matrix_gen(maze_dim_x, maze_dim_y);
+                matrix_init(intmap, UNCARVED);
+                solution = []
+                visited = [];
+                halt = false;
+                unsolved = false;
+            }
+            function draw_line(v, w, color, width){
+                if(v == undefined || w == undefined)
+                    return;
+                canvas.strokeStyle = color;
+                canvas.lineWidth = width;
+                canvas.beginPath();
+                canvas.moveTo(v.x, v.y);
+                canvas.lineTo(w.x, w.y);
+                canvas.stroke();
+                canvas.closePath();
+            }
+            function draw_node(i_x, i_y, i_color){
+                canvas.strokeStyle = i_color;
+                canvas.fillStyle = i_color;
+                canvas.lineWidth = "2";
+                canvas.beginPath();
+                canvas.moveTo(i_x, i_y)
+                canvas.arc(i_x, i_y, cell_radius / 5, 0, Math.PI * 2, 0);
+                canvas.fill();
+                canvas.closePath();
+            }
+            function draw_cell(v){
+                draw_line(v.add(vector_nw), v.add(vector_ne), "black", cell_border);
+                draw_line(v.add(vector_ne), v.add(vector_se), "black", cell_border);
+                draw_line(v.add(vector_se), v.add(vector_sw), "black", cell_border);
+                draw_line(v.add(vector_sw), v.add(vector_nw), "black", cell_border);
+            }
+            function draw_hole(v, i_dir){
+                switch(i_dir){
+                    case NORTH: draw_line(v.add(vector_nw.divide(2)), v.add(vector_ne.divide(2)), "white", cell_border + 1); break;
+                    case SOUTH: draw_line(v.add(vector_se.divide(2)), v.add(vector_sw.divide(2)), "white", cell_border + 1); break;
+                    case EAST: draw_line(v.add(vector_ne.divide(2)), v.add(vector_se.divide(2)), "white", cell_border + 1); break;
+                    case WEST: draw_line(v.add(vector_sw.divide(2)), v.add(vector_nw.divide(2)), "white", cell_border + 1); break;
+                }
+            }
+            function draw_grid(){
+                for(var y = 0; y < maze_dim_y - 1; y++)
+                    for(var x = 0; x < maze_dim_x - 1; x++){
+                            vector_buf = new Vector(cell_radius * (x + 1.2), cell_radius * (y + 1.2));
+                            draw_cell(vector_buf);
+                        }
+            }
+            function draw_square(i_x, i_y, i_color, i_radius){
+                canvas.strokeStyle = i_color;
+                canvas.fillStyle = i_color;
+                canvas.beginPath();
+                canvas.rect(i_x, i_y, i_radius, i_radius);
+                canvas.fill();
+                canvas.closePath();
+            }
+            function find_uncarved(i_dir){
+                switch(i_dir){
+                    case NORTH:
+                        mutex_dir[NORTH] = true;
+                        if(pos_y - 1 > -1)
+                            return(intmap[pos_x][pos_y - 1] == UNCARVED);
+                    break;
+                    case SOUTH:
+                        mutex_dir[SOUTH] = true;
+                        if(pos_y + 1 < maze_dim_y)
+                            return(intmap[pos_x][pos_y + 1] == UNCARVED);
+                    break;
+                    case EAST:
+                        mutex_dir[EAST] = true;
+                        if(pos_x + 1 < maze_dim_x)
+                            return(intmap[pos_x + 1][pos_y] == UNCARVED);
+                    break;
+                    case WEST:
+                        mutex_dir[WEST] = true;
+                        if(pos_x - 1 > -1)
+                            return(intmap[pos_x - 1][pos_y] == UNCARVED);
+                    break;
+                }
+                return false;
+            }
+            function backtrack(){
+                intmap[pos_x][pos_y] = CARVED;
+                visited.push(pos_y);
+                visited.push(pos_x);
+                if(pos_x == sol_x && pos_y == sol_y)
+                    solution = visited.slice(0);
+                mutex_dir = [false, false, false, false];
+                random_dir = Math.floor(Math.random() * 4);
+                dir_found = find_uncarved(random_dir);
+                while(!dir_found){
+                    random_dir = Math.floor(Math.random() * 4);
+                    dir_found = find_uncarved(random_dir);
+                    if(mutex_dir[NORTH] && mutex_dir[SOUTH] && mutex_dir[EAST] && mutex_dir[WEST]){
+                        visited.pop();
+                        visited.pop();
+                        pos_x = visited.pop();
+                        pos_y = visited.pop();
+                        break;
+                    }
+                }
+                if(dir_found){
+                    vector_buf = new Vector(cell_radius * (pos_x + 0.7), cell_radius * (pos_y + 0.7));
+                    switch(random_dir){
+                        case NORTH:
+                            draw_hole(vector_buf, NORTH);
+                            pos_y = pos_y - 1;
+                        break;
+                        case SOUTH:
+                            draw_hole(vector_buf, SOUTH);
+                            pos_y = pos_y + 1;
+                        break;
+                        case EAST:
+                            draw_hole(vector_buf, EAST);
+                            pos_x = pos_x + 1;
+                        break;
+                        case WEST:
+                            draw_hole(vector_buf, WEST);
+                            pos_x = pos_x - 1;
+                        break;
+                    }
+                }
+                if(visited.length == 0)
+                    return true;
+                return false;
+            }
+            function solve(){
+                var vector_i = new Vector(cell_radius * (pos_x + 0.7), cell_radius * (pos_y + 0.7));
+                pos_x = solution.pop();
+                pos_y = solution.pop();
+                var vector_f = new Vector(cell_radius * (pos_x + 0.7), cell_radius * (pos_y + 0.7));
+                draw_line(vector_i, vector_f, "blue", cell_border);
+            }
+            function run(i_x, i_y, i_r){
+                init(i_x, i_y, i_r)
+                draw_square(0, 0, "white", DIM_X);
+                draw_node(pos_x + cell_radius/2, pos_y + cell_radius, "blue");
+                draw_node(sol_x * cell_radius + cell_radius/2, sol_y * cell_radius + cell_radius/2, "red");
+                draw_grid();
+            }
+            function prime(){
+                var init_x, init_y, init_r;
+                var valid = false;
+                while(!valid){
+                    init_x = window.prompt("Enter the desired maze width (cells).", 50);
+                    init_y = window.prompt("Enter the desired maze height (cells).", 50);
+                    init_r = window.prompt("Enter the desired cell width (pixels).", 15);
+                    if(parseInt(init_x) && parseInt(init_y) && parseInt(init_r)){
+                        init_x = parseInt(init_x);
+                        init_y = parseInt(init_y);
+                        init_r = parseInt(init_r);
+                        valid = true;
+                    }
+                }
+                run(init_x, init_y, init_r);
+                alert("Click OK, then hold the E key.");
+            }
+            prime();
+            document.addEventListener
+            ('keypress', (event) =>{ switch(event.keyCode){
+                case 101:
+                    if(!halt)
+                        for(var i = 0; i < maze_dim_x; i++)
+                            try { halt = backtrack(); }
+                            catch(e) { }
+                    else if(!unsolved)
+                    {
+                        pos_x = sol_x;
+                        pos_y = sol_y;
+                        unsolved = true;
+                    }
+                    else
+                        for(var i = 0; i < maze_dim_x; i++)
+                            solve();
+                break;
+            }});
+            </script>
+        </canvas>
+        </div>
+    </body>
+</html>
