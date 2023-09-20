@@ -1,96 +1,144 @@
 var DIM_X;
 var DIM_Y;
 
-var RADIUS;
-var CELL_BORDER;
+const LOOP_RADIUS = 15;
+const VTX_RADIUS = 5;
+const EDGE_WIDTH = 1;
+const HEADLENGTH = 10;
 
-var VECTOR_NW;
-var VECTOR_NE;
-var VECTOR_SE;
-var VECTOR_SW;
-
-var COLOR_N;
-var COLOR_S;
-var COLOR_E;
-var COLOR_W;
+const VTX_COLOR = "blue";
+const EDGE_COLOR = "black";
+const TRAVERSAL_COLOR = "blue";
+const TRAVERSAL_COLOR_NULL = "red";
+const TRAVERSAL_COLOR_ARROW = "green";
+const PATH_COLOR = "blue";
+const PATH_COLOR_NULL = "orange";
 
 const FONT = "24px serif";
 const FONT_SIZE = 24;
 
-var canvas;
-var vector_buf;
+var VTX_COUNT = 10;
 
-function init_window()
+function Window(i_graph, i_canvas)
 {
-    canvas = document.getElementById("canvas").getContext("2d");
+    this.canvas = i_canvas || document.getElementById("canvas").getContext("2d");
     DIM_X = document.getElementById("canvas").width;
     DIM_Y = document.getElementById("canvas").height;
-    canvas.font = FONT;
-    MazeGen();
-    RADIUS = 50;
-    VECTOR_NW = new Vector(-RADIUS, -RADIUS);
-    VECTOR_NE = new Vector(RADIUS, -RADIUS);
-    VECTOR_SE = new Vector(RADIUS, RADIUS);
-    VECTOR_SW = new Vector(-RADIUS, RADIUS);
-    CELL_BORDER = 3;
+    this.graph = i_graph || new Graph(VTX_COUNT, DIM_X, DIM_Y);
+    this.canvas.font = FONT;
 }
 
-function draw_line(v, w, color, width)
+Window.prototype =
 {
-    if(v == undefined || w == undefined)
-        return;
-    canvas.strokeStyle = color;
-    canvas.lineWidth = width;
-    canvas.beginPath();
-    canvas.moveTo(v.x, v.y);
-    canvas.lineTo(w.x, w.y);
-    canvas.stroke();
-    canvas.closePath();
-}
-
-function draw_cell(v)
-{
-    draw_line(v.add(VECTOR_NW), v.add(VECTOR_NE), "black", CELL_BORDER);
-    draw_line(v.add(VECTOR_NE), v.add(VECTOR_SE), "black", CELL_BORDER);
-    draw_line(v.add(VECTOR_SE), v.add(VECTOR_SW), "black", CELL_BORDER);
-    draw_line(v.add(VECTOR_SW), v.add(VECTOR_NW), "black", CELL_BORDER);
-}
-
-function draw_hole(v, i_dir)
-{
-    switch(i_dir)
+    init: function(I_V, I_E)
     {
-        case NORTH:
-            draw_line(v.add(VECTOR_NW), v.add(VECTOR_NE), "white", CELL_BORDER);
-        break;
-        case SOUTH:
-            draw_line(v.add(VECTOR_SE), v.add(VECTOR_SW), "white", CELL_BORDER);
-        break;
-        case EAST:
-            draw_line(v.add(VECTOR_NE), v.add(VECTOR_SE), "white", CELL_BORDER);
-        break;
-        case WEST:
-            draw_line(v.add(VECTOR_SW), v.add(VECTOR_NW), "white", CELL_BORDER);
-        break;
-    }
-}
-
-function draw_grid()
-{
-    for(var y = 0; y < MAZE_DIM_Y; y++)
-        for(var x = 0; x < MAZE_DIM_X; x++)
+        this.canvas.translate(DIM_X / 2, DIM_Y / 2, true);
+        this.graph.init(I_V, I_E);
+        VTX_COUNT = I_V.length;
+    },
+    init_rand: function()
+    {
+        this.canvas.translate(DIM_X / 2, DIM_Y / 2, true);
+        this.graph.rand_init();
+    },
+    write: function(text, x, y, color)
+    {
+        this.canvas.strokeStyle = color;
+        this.canvas.fillText(text, x, y);
+    },
+    draw_vtx: function(v, i, color)
+    {
+        if(v == undefined)
+            return;
+        this.canvas.strokeStyle = color;
+        this.canvas.lineWidth = EDGE_WIDTH;
+        this.canvas.beginPath();
+        this.canvas.moveTo(v.x, v.y)
+        this.canvas.arc(v.x, v.y, VTX_RADIUS, 0, Math.PI * 2, 0);
+        this.canvas.fill();
+        this.write(i, v.x * 1.1, v.y * 1.1, color);
+        this.canvas.closePath();
+    },
+    draw_line: function(v, w, color, width)
+    {
+        if(v == undefined || w == undefined)
+            return;
+        this.canvas.strokeStyle = color;
+        this.canvas.lineWidth = width;
+        this.canvas.beginPath();
+        this.canvas.moveTo(v.x, v.y);
+        this.canvas.lineTo(w.x, w.y);
+        this.canvas.stroke();
+        this.canvas.closePath();
+    },
+    draw_arrow: function(v, w, color, width)
+    {
+        if(v == undefined || w == undefined)
+            return;
+        var dist = v.dist(w);
+        var angle = w.subtract(v).to_angle();
+        var tip = v.add(w.subtract(v).multiply(0.75));
+        var base = v.add(w.subtract(v).multiply(0.70));
+        var w_left = new Vector(base.x - HEADLENGTH * Math.cos(angle - Math.PI/6), base.y - HEADLENGTH * Math.sin(angle - Math.PI/6));
+        var w_right = new Vector(base.x - HEADLENGTH * Math.cos(angle + Math.PI/6), base.y - HEADLENGTH * Math.sin(angle + Math.PI/6));
+        this.draw_line(tip, w_left, color, width);
+        this.draw_line(tip, w_right, color, width);
+    },
+    draw_graph: function()
+    {
+        var v_buf;
+        var w_buf;
+        for(var i = 0; i < this.graph.V.length; i++)
+            this.draw_vtx(this.graph.V[i], i, VTX_COLOR);
+        for(var i = 0; i < this.graph.V.length; i++)
         {
-            vector_buf = new Vector(x * RADIUS + 2 * RADIUS, y * RADIUS + 2 * RADIUS);
-            draw_cell(vector_buf);
-            for(let dir of maze_grid[x][y])
-                draw_hole(vector_buf, dir);
+            v_buf = this.graph.V[i];
+            for(let j of this.graph.E[i])
+            {
+                w_buf = this.graph.V[j];
+                this.draw_line(v_buf, w_buf, EDGE_COLOR, EDGE_WIDTH);
+                this.draw_arrow(v_buf, w_buf, EDGE_COLOR, EDGE_WIDTH);
+            }
         }
-}
+    },
+    bfs: function(V_i, target)
+    {
+        var graph_copy = this.graph;
+        var color = TRAVERSAL_COLOR_NULL;
+        var path_color = PATH_COLOR_NULL;
+        var success = graph_copy.bfs(V_i, target);
+        if(success)
+        {
+            color = TRAVERSAL_COLOR;
+            path_color = PATH_COLOR;
+            this.write("Algorithm discovered path", (-DIM_X / 2) + FONT_SIZE, (-DIM_Y / 2) + 3 * FONT_SIZE, color);
+        }
+        else
+            this.write("Algorithm failed to discover path", (-DIM_X / 2) + FONT_SIZE, (-DIM_Y / 2) + 3 * FONT_SIZE, color);
+        this.write("Vertex V[" + V_i + "] to vertex V[" + target + "]", (-DIM_X / 2) + FONT_SIZE, (-DIM_Y / 2) + FONT_SIZE, color);
+        this.write(this.graph.bfs_breadcrumbs.toString(), (-DIM_X / 2) + FONT_SIZE, (-DIM_Y / 2) + 4 * FONT_SIZE, color);
+        this.write(this.graph.bfs_visited.toString(), (-DIM_X / 2) + FONT_SIZE, (-DIM_Y / 2) + 2 * FONT_SIZE, color);
 
-function run()
-{
-    init_window();
-    draw_grid();
-}
 
-run();
+        var path = graph_copy.bfs_visited;
+        for(var i = 0; i < this.graph.bfs_visited.length; i++)
+        {
+            this.draw_line(this.graph.V[path[i]], this.graph.V[path[i+1]], color, 3 * EDGE_WIDTH);
+            this.draw_arrow(this.graph.V[path[i]], this.graph.V[path[i+1]], color, 4 * EDGE_WIDTH);
+        }
+
+        var path = graph_copy.bfs_breadcrumbs;
+        for(var i = 0; i < path.length - 1; i++)
+        {
+            this.draw_line(this.graph.V[path[i]], this.graph.V[path[i+1]], color, 3 * EDGE_WIDTH);
+            this.draw_arrow(this.graph.V[path[i]], this.graph.V[path[i+1]], color, 4 * EDGE_WIDTH);
+        }
+    },
+    bfs_rand: function()
+    {
+        var diceroll = [Math.floor(Math.random() * Math.floor(VTX_COUNT)), Math.floor(Math.random() * Math.floor(VTX_COUNT))];
+        while(diceroll[0] == diceroll[1])
+            diceroll = [Math.floor(Math.random() * Math.floor(VTX_COUNT)), Math.floor(Math.random() * Math.floor(VTX_COUNT))];
+        this.bfs(diceroll[0], diceroll[1]);
+    }
+};
