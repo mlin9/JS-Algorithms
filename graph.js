@@ -28,7 +28,7 @@ Graph.prototype =
     {
         var rand_buf;
         for(var i = 0; i < this.MAX_VTX; i++) {
-            this.V[i].push(this.rand_vtx());
+            this.V.push(this.rand_vtx());
             this.E[i] = i;
         }
             
