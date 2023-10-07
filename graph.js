@@ -27,18 +27,18 @@ Graph.prototype =
     rand_init: function()
     {
         var rand_buf;
-        for(var i = 0; i < this.MAX_VTX; i++) {
-            this.V.push(this.rand_vtx());
-            this.E[i] = i;
-        }
-            
-        for(var i = 0; i < this.MAX_VTX; i++) {
-            while(rand_buf == null || rand_buf == i) {
-                rand_buf = this.rand_int(this.MAX_VTX - 1, false);
+        for(var i = 0; i < this.MAX_VTX; i++)
+        {
+            this.V[i] = this.rand_vtx();
+            this.E[i] = [];
+            for(var j = 0; j < this.rand_int(this.MAX_VTX - 1, false); j++)
+            {
+                while(rand_buf == null || rand_buf == i || this.E[i].includes(rand_buf)) {
+                    rand_buf = this.rand_int(this.MAX_VTX - 1, false);
+                }
+                
+                this.E[i].push(rand_buf);
             }
-            var temp = this.E[i];
-            this.E[i] = this.E[rand_buf];
-            this.E[rand_buf] = temp;
         }
     },
     init: function(I_V, I_E)
